@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../repositories/auth_repository.dart';
+import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,8 +13,11 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final AuthRepository _authRepository = AuthRepository();
 
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _emailController =
+      TextEditingController();
+
+  final TextEditingController _passwordController =
+      TextEditingController();
 
   bool _isLoading = false;
 
@@ -31,13 +35,17 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Login realizado com sucesso')),
+        const SnackBar(
+          content: Text('Login realizado com sucesso'),
+        ),
       );
     } catch (error) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao entrar: $error')),
+        SnackBar(
+          content: Text('Erro ao entrar: $error'),
+        ),
       );
     } finally {
       if (mounted) {
@@ -48,10 +56,19 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _openRegister() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const RegisterScreen(),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+
     super.dispose();
   }
 
@@ -67,6 +84,8 @@ class _LoginScreenState extends State<LoginScreen> {
           children: [
             TextField(
               controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
               decoration: const InputDecoration(
                 labelText: 'E-mail',
               ),
@@ -82,7 +101,16 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _isLoading ? null : _signIn,
-              child: Text(_isLoading ? 'Entrando...' : 'Entrar'),
+              child: Text(
+                _isLoading ? 'Entrando...' : 'Entrar',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: _isLoading ? null : _openRegister,
+              child: const Text(
+                'Ainda não tem conta? Criar conta',
+              ),
             ),
           ],
         ),

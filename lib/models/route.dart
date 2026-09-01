@@ -7,6 +7,8 @@ class Route {
   final int? startMileage;
   final int? endMileage;
 
+  final String? driverName;
+
   final DateTime? startedAt;
   final DateTime? completedAt;
 
@@ -24,6 +26,7 @@ class Route {
     required this.status,
     this.startMileage,
     this.endMileage,
+    this.driverName,
     this.startedAt,
     this.completedAt,
     required this.createdBy,
@@ -41,6 +44,7 @@ class Route {
       status: map['status'],
       startMileage: map['start_mileage'],
       endMileage: map['end_mileage'],
+      driverName: map['driver_name'] as String?,
       startedAt: map['started_at'] == null
           ? null
           : DateTime.parse(map['started_at']),

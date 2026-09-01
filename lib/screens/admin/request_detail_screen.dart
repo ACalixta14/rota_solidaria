@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/request.dart';
 import '../../models/request_fulfillment.dart';
 import '../../repositories/request_repository.dart';
+import '../../services/session_service.dart';
 
 
 class RequestDetailScreen extends StatefulWidget {
@@ -22,6 +23,8 @@ class _RequestDetailScreenState
     extends State<RequestDetailScreen> {
   final RequestRepository _repository =
       RequestRepository();
+  
+  final SessionService _session = SessionService.instance;
 
   late Future<List<RequestFulfillment>> _fulfillmentsFuture;
 
@@ -251,6 +254,7 @@ class _RequestDetailScreenState
             ),
           ),
 
+        if (_session.canManage) ...[
           const SizedBox(height: 8),
 
           OutlinedButton.icon(
@@ -262,7 +266,8 @@ class _RequestDetailScreenState
               'Cancelar pedido',
             ),
           ),
-
+        ],
+        
           const SizedBox(height: 24),
           const Divider(),
           const SizedBox(height: 12),

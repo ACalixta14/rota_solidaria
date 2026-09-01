@@ -17,6 +17,25 @@ class AuthRepository {
     );
   }
 
+  // Cria uma nova conta no Supabase Auth.
+  //
+  // O Flutter envia apenas os dados pessoais necessários.
+  // A organização e a função "volunteer" são definidas
+  // automaticamente pelo banco através de handle_new_user().
+  Future<AuthResponse> signUp({
+    required String fullName,
+    required String email,
+    required String password,
+  }) async {
+    return await _client.auth.signUp(
+      email: email,
+      password: password,
+      data: {
+        'full_name': fullName,
+      },
+    );
+  }
+
   // Encerra a sessão atual.
   Future<void> signOut() async {
     await _client.auth.signOut();

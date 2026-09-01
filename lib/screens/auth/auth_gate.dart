@@ -131,19 +131,9 @@ class _AuthGateState extends State<AuthGate> {
           );
         }
 
-        // Nesta primeira fase, administrador e coordenador
-        // utilizam a mesma área de gestão.
-        if (appUser.canManage) {
-          return AdminHomeScreen(user: appUser);
-        }
-
-        // Ainda não existe a tela operacional definitiva.
-        if (appUser.isVolunteer) {
-          return _VolunteerTemporaryScreen(
-            user: appUser,
-            onSignOut: _signOut,
-          );
-        }
+    if (appUser.canManage || appUser.isVolunteer) {
+  return AdminHomeScreen(user: appUser);
+}
 
         return _MissingRoleScreen(
           user: appUser,

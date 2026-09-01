@@ -31,6 +31,7 @@ class AdminHomeScreen extends StatelessWidget {
     }
   }
 
+//aqui sinaliza qual tipo de perfil entrou 
   String get _roleLabel {
     if (user.isAdmin) {
       return UserRole.admin.label;
@@ -38,6 +39,10 @@ class AdminHomeScreen extends StatelessWidget {
 
     if (user.isCoordinator) {
       return UserRole.coordinator.label;
+    }
+    
+    if (user.isVolunteer){
+      return UserRole.volunteer.label;
     }
 
     return 'Utilizador';

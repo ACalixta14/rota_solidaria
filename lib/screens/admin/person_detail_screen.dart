@@ -3,11 +3,13 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/assisted_person.dart';
 import '../../models/visit_record.dart';
+import '../../repositories/request_repository.dart';
 import '../../repositories/assisted_person_repository.dart';
 import '../../repositories/visit_record_repository.dart';
 import '../../services/session_service.dart';
 import 'person_form_screen.dart';
 import 'visit_form_screen.dart';
+import 'visit_detail_screen.dart';
 
 class PersonDetailScreen extends StatefulWidget {
   final AssistedPerson person;
@@ -29,16 +31,110 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
   final AssistedPersonRepository _personRepository =
       AssistedPersonRepository();
 
+  final RequestRepository _requestRepository =
+    RequestRepository();
+
   final SessionService _session = SessionService.instance;
 
   late Future<List<VisitRecord>> _visitsFuture;
 
-  @override
-  void initState() {
-    super.initState();
-    _visitsFuture =
-        _visitRepository.getByPerson(widget.person.id);
+  late Future<int> _openRequestsCountFuture;
+
+
+@override
+void initState() {
+  super.initState();
+
+  _visitsFuture =
+      _visitRepository.getByPerson(widget.person.id);
+
+  _openRequestsCountFuture =
+      _loadOpenRequestsCount();
+}
+Future<void> _createRequest() async {
+  final controller = TextEditingController();
+
+  final description = await showDialog<String>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: const Text('Novo pedido'),
+        content: TextField(
+          controller: controller,
+          maxLines: 3,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Descrição do pedido',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+            },
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () {
+              final value = controller.text.trim();
+
+              if (value.isEmpty) {
+                return;
+              }
+
+              Navigator.of(dialogContext).pop(value);
+            },
+            child: const Text('Criar pedido'),
+          ),
+        ],
+      );
+    },
+  );
+
+  controller.dispose();
+
+  if (description == null || description.trim().isEmpty) {
+    return;
   }
+
+  try {
+    await _requestRepository.createRequest(
+      assistedPersonId: widget.person.id,
+      description: description,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _openRequestsCountFuture =
+          _loadOpenRequestsCount();
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Pedido criado com sucesso.'),
+      ),
+    );
+  } catch (error) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Erro ao criar pedido: $error',
+        ),
+      ),
+    );
+  }
+}
+
+Future<int> _loadOpenRequestsCount() async {
+  final requests =
+      await _requestRepository.getOpenByPerson(widget.person.id);
+
+  return requests.length;
+}
 
   void _reloadVisits() {
     setState(() {
@@ -211,6 +307,42 @@ if (person.phone != null && person.phone!.isNotEmpty) ...[
 
 const SizedBox(height: 8),
 Text('Observações: ${person.publicNotes ?? '-'}'),
+
+const SizedBox(height: 16),
+
+FutureBuilder<int>(
+  future: _openRequestsCountFuture,
+  builder: (context, snapshot) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return const Text('A carregar pedidos em aberto...');
+    }
+
+    if (snapshot.hasError) {
+      return const Text(
+        'Não foi possível carregar os pedidos em aberto.',
+      );
+    }
+
+    final count = snapshot.data ?? 0;
+
+    return Text(
+      count == 1
+          ? '🟠 1 pedido em aberto'
+          : '🟠 $count pedidos em aberto',
+      style: const TextStyle(
+        fontWeight: FontWeight.w600,
+      ),
+    );
+  },
+),
+
+const SizedBox(height: 12),
+
+ElevatedButton.icon(
+  onPressed: _createRequest,
+  icon: const Icon(Icons.add),
+  label: const Text('Novo pedido'),
+),
 const SizedBox(height: 24),
 
 //BOTÃO REGISTRAR VISITAS DENTRO DO PERFIL DO ASSISTIDO
@@ -304,6 +436,18 @@ const SizedBox(height: 24),
                             ),
                         ],
                       ),
+                      trailing: const Icon(
+                       Icons.chevron_right,
+                        ),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => VisitDetailScreen(
+                                visit: visit,
+                              ),
+                            ),
+                          );
+                        },
                     ),
                   );
                 }).toList(),
