@@ -5,6 +5,7 @@ import '../../repositories/auth_repository.dart';
 import 'people_list_screen.dart';
 import 'routes_screen.dart';
 import 'requests_screen.dart';
+import 'people_map_screen.dart';
 
 
 class AdminHomeScreen extends StatelessWidget {
@@ -123,6 +124,20 @@ ElevatedButton.icon(
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => const RequestsScreen(),
+      ),
+    );
+  },
+),
+
+// botão mapa de pessoas
+const SizedBox(height: 12),
+ElevatedButton.icon(
+  icon: const Icon(Icons.map_outlined),
+  label: const Text('Mapa de pessoas'),
+  onPressed: () {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const PeopleMapScreen(),
       ),
     );
   },
