@@ -266,7 +266,8 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                 });
               },
             ),
-
+//OPÇÕES QUE FOCAVAM EM UMA AVALIAÇÃO RÁPIDA FÍSICA E DE HUMOR DOS ASSISTIDOS
+/*
             const SizedBox(height: 16),
 
             DropdownButtonFormField<String>(
@@ -374,6 +375,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                 });
               },
             ),
+    */
           ] else ...[
             DropdownButtonFormField<String>(
               value: _notFoundReason,

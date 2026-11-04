@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../models/assisted_person.dart';
 import '../../repositories/assisted_person_repository.dart';
+import 'person_detail_screen.dart';
+
 
 class InactivePeopleScreen extends StatefulWidget {
   const InactivePeopleScreen({super.key});
@@ -17,6 +19,7 @@ class _InactivePeopleScreenState
       AssistedPersonRepository();
 
   late Future<List<AssistedPerson>> _peopleFuture;
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -103,7 +106,17 @@ class _InactivePeopleScreenState
             );
           }
 
-          final people = snapshot.data ?? [];
+//filtro para pesquisa em ordem alfabetica
+          final people = List<AssistedPerson>.from(
+            snapshot.data ?? <AssistedPerson>[],
+          );
+
+          people.sort((a, b) {
+            final nameA = (a.name ?? '').trim().toLowerCase();
+            final nameB = (b.name ?? '').trim().toLowerCase();
+
+            return nameA.compareTo(nameB);
+          });
 
           if (people.isEmpty) {
             return const Center(
@@ -111,30 +124,75 @@ class _InactivePeopleScreenState
             );
           }
 
-          return ListView.builder(
-            itemCount: people.length,
-            itemBuilder: (context, index) {
-              final person = people[index];
+
+final filteredPeople = people.where((person) {
+  final query = _searchQuery.trim().toLowerCase();
+  final name = (person.name ?? '').toLowerCase();
+  final nickname = (person.nickname ?? '').toLowerCase();
+
+  return name.contains(query) || nickname.contains(query);
+}).toList();
+
+return Column(
+  children: [
+    Padding(
+      padding: const EdgeInsets.all(12),
+      child: TextField(
+        decoration: const InputDecoration(
+          hintText: 'Pesquisar por nome ou alcunha',
+          prefixIcon: Icon(Icons.search),
+          border: OutlineInputBorder(),
+        ),
+        onChanged: (value) {
+          setState(() {
+            _searchQuery = value;
+          });
+        },
+      ),
+    ),
+    Expanded(
+      child: filteredPeople.isEmpty
+          ? const Center(
+              child: Text('Nenhuma pessoa encontrada.'),
+            )
+          : ListView.builder(
+              itemCount: filteredPeople.length,
+              itemBuilder: (context, index) {
+                final person = filteredPeople[index];
 
               return ListTile(
-                leading: const Icon(Icons.person_off),
-                title: Text(
-                  person.name ?? 'Sem nome',
-                ),
-                subtitle: Text(
-                  person.deactivationReason ??
-                      'Motivo não registado',
-                ),
-                trailing: IconButton(
-                  tooltip: 'Reativar',
-                  icon: const Icon(Icons.person_add),
-                  onPressed: () {
-                    _reactivatePerson(person);
-                  },
-                ),
-              );
-            },
-          );
+  leading: const Icon(Icons.person_off),
+  onTap: () {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PersonDetailScreen(
+          person: person,
+          readOnly: true,
+        ),
+      ),
+    );
+  },
+  title: Text(
+    person.name ?? 'Sem nome',
+  ),
+
+                  subtitle: Text(
+                    person.deactivationReason ??
+                        'Motivo não registado',
+                  ),
+                  trailing: IconButton(
+                    tooltip: 'Reativar',
+                    icon: const Icon(Icons.person_add),
+                    onPressed: () {
+                      _reactivatePerson(person);
+                    },
+                  ),
+                );
+              },
+            ),
+    ),
+  ],
+);
         },
       ),
     );

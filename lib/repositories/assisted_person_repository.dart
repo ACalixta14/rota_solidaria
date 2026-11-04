@@ -4,6 +4,9 @@ import '../models/app_user.dart';
 import '../models/assisted_person.dart';
 import '../services/session_service.dart';
 
+//Repositorio resposável pelas operações das pessoas assistidas (DADOS)
+//Centraliza acesso Supabase para leitura, criação, atualização, (des)ativação 
+
 class AssistedPersonRepository {
   final SupabaseClient _client = Supabase.instance.client;
   final SessionService _session = SessionService.instance;
@@ -20,6 +23,13 @@ class AssistedPersonRepository {
 
     return user;
   }
+
+//Busca pessoas ativas, consulta pelo supabase e recebe como Map
+//é convertido em objetos AssistedPerson através do fromMap()
+
+//*REVISÃO - Diferente dos outros este apenas consulta "is_active"
+//outros pegam .eq('organization_id', user.organizationId)  
+//*/
 
   Future<List<AssistedPerson>> getAll() async {
     final response = await _client

@@ -77,7 +77,26 @@ class RouteStopRepository {
       'created_by': user.id,
     });
   }
+Future<void> remove({
+  required String routeId,
+  required String routeStopId,
+}) async {
+  final user = _currentUser;
 
+  if (!user.canManage) {
+    throw Exception(
+      'O utilizador não tem permissão para alterar rotas.',
+    );
+  }
+
+  await _client.rpc(
+    'remove_route_stop',
+    params: {
+      'p_route_id': routeId,
+      'p_route_stop_id': routeStopId,
+    },
+  );
+}
   Future<void> reorder({
   required String routeId,
   required List<RouteStop> stops,

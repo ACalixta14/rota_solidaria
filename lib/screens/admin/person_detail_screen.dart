@@ -13,10 +13,13 @@ import 'visit_detail_screen.dart';
 
 class PersonDetailScreen extends StatefulWidget {
   final AssistedPerson person;
+  final bool readOnly;
 
   const PersonDetailScreen({
     super.key,
     required this.person,
+  //garantia que os perfis ativos continuam a funcionar como antes
+    this.readOnly = false,
   });
 
   @override
@@ -248,7 +251,7 @@ Future<void> _callPhone(String phone) async {
       appBar: AppBar(
         title: Text(person.name ?? 'Detalhes'),
         actions: [
-          if (_session.canManage) ...[
+          if (_session.canManage && !widget.readOnly) ...[
             IconButton(
               icon: const Icon(Icons.edit),
               onPressed: () async {
@@ -273,9 +276,10 @@ Future<void> _callPhone(String phone) async {
           ],
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+  body: SelectionArea(
+  child: ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
           Text(
             person.name ?? 'Sem nome',
             style: Theme.of(context).textTheme.headlineSmall,
@@ -338,6 +342,7 @@ FutureBuilder<int>(
 
 const SizedBox(height: 12),
 
+if (!widget.readOnly)
 ElevatedButton.icon(
   onPressed: _createRequest,
   icon: const Icon(Icons.add),
@@ -454,8 +459,9 @@ const SizedBox(height: 24),
               );
             },
           ),
-        ],
+                ],
       ),
+    ),
     );
   }
 }

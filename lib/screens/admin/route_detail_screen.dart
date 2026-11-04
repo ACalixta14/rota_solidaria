@@ -13,6 +13,7 @@ import '../../repositories/visit_record_repository.dart';
 import '../../services/session_service.dart';
 import 'visit_form_screen.dart';
 import 'person_detail_screen.dart';
+import 'route_inventory_panel.dart';
 
 
 class RouteDetailScreen extends StatefulWidget {
@@ -22,6 +23,80 @@ class RouteDetailScreen extends StatefulWidget {
     super.key,
     required this.route,
   });
+
+  // Reconstrói o relatório final a partir dos dados guardados.
+  // Reutilizável na tela de detalhe (ao finalizar) e na listagem de
+  // rotas (para recuperar o relatório de rotas já concluídas).
+  static Future<String> buildRouteSummary({
+    required app_route.Route route,
+    required int endMileage,
+    required RouteStopRepository stopRepository,
+    required VisitRecordRepository visitRepository,
+  }) async {
+    final stops = await stopRepository.getByRoute(route.id);
+    final visits = await visitRepository.getByRoute(route.id);
+
+    final visitByPersonId = {
+      for (final visit in visits) visit.assistedPersonId: visit,
+    };
+
+    final foundCount = visits.where((visit) => visit.wasFound).length;
+    final notFoundCount = visits.where((visit) => !visit.wasFound).length;
+
+    final startMileage = route.startMileage;
+    final distance =
+        startMileage == null ? null : endMileage - startMileage;
+
+    final buffer = StringBuffer();
+
+    buffer.writeln('ROTA SOLIDÁRIA — ${formatRouteDate(route.routeDate)}');
+
+    if (route.driverName != null &&
+        route.driverName!.trim().isNotEmpty) {
+      buffer.writeln('Motorista: ${route.driverName}');
+    }
+
+    if (distance != null) {
+      buffer.writeln('Distância percorrida: $distance km');
+    }
+
+    buffer.writeln();
+    buffer.writeln('Pessoas acompanhadas:');
+
+    for (final stop in stops) {
+      final visit = visitByPersonId[stop.assistedPersonId];
+
+      final status = visit == null
+          ? 'Sem registo'
+          : visit.wasFound
+              ? 'Encontrado'
+              : 'Não encontrado';
+
+      buffer.writeln(
+        '${stop.stopOrder}. '
+        '${stop.personName ?? 'Sem nome'} — $status',
+      );
+
+      if (visit?.observation != null &&
+          visit!.observation!.trim().isNotEmpty) {
+        buffer.writeln('   Observações: ${visit.observation!.trim()}');
+      }
+    }
+
+    buffer.writeln();
+    buffer.writeln('Resumo:');
+    buffer.writeln('Encontrados: $foundCount');
+    buffer.writeln('Não encontrados: $notFoundCount');
+    buffer.writeln('Total da rota: ${stops.length}');
+
+    return buffer.toString().trim();
+  }
+
+  static String formatRouteDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year}';
+  }
 
   @override
   State<RouteDetailScreen> createState() =>
@@ -47,12 +122,22 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
   late Future<Set<String>> _visitedStopIdsFuture;
   late app_route.Route _route;
 
+  //preservando a posição da lista
+  final ScrollController _scrollController = ScrollController();
+ double? _pendingScrollOffset;
+
 
   @override
   void initState() {
     super.initState();
     _route = widget.route;
     _loadData();
+  }
+
+  @override
+  void dispose (){
+    _scrollController.dispose();
+    super.dispose();
   }
 
   void _loadData() {
@@ -192,101 +277,128 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
     _reload();
   }
 
-  Future<void> _startRoute() async {
-    final controller = TextEditingController();
+Future<void> _startRoute() async {
+  final driverController = TextEditingController();
+  final mileageController = TextEditingController();
 
-    final startMileage = await showDialog<int>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Iniciar rota'),
-          content: TextField(
-            controller: controller,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Quilometragem inicial',
-              suffixText: 'km',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-              },
-              child: const Text('Cancelar'),
-            ),
-            TextButton(
-              onPressed: () {
-                final mileage = int.tryParse(
-                  controller.text.trim(),
-                );
-
-                if (mileage == null ||
-                    mileage < 0) {
-                  return;
-                }
-
-                Navigator.of(dialogContext)
-                    .pop(mileage);
-              },
-              child: const Text('Iniciar'),
-            ),
-          ],
-        );
-      },
-    );
-
-    controller.dispose();
-
-    if (startMileage == null) return;
-
-    try {
-      await _routeRepository.startRoute(
-        routeId: widget.route.id,
-        startMileage: startMileage,
-      );
-
-      if (!mounted) return;
-
-   final updatedRoute =
-    await _routeRepository.getById(_route.id);
-
-          if (!mounted) return;
-
-          setState(() {
-            _route = updatedRoute;
-            _loadData();
-          });
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Rota iniciada com sucesso.',
+  final result = await showDialog<Map<String, dynamic>>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: const Text('Iniciar rota'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: driverController,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Nome do motorista',
               ),
             ),
-          );
-
-    } catch (error) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Erro ao iniciar rota: $error',
-          ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: mileageController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Quilometragem inicial',
+                suffixText: 'km',
+              ),
+            ),
+          ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+            },
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () {
+              final driverName =
+                  driverController.text.trim();
+
+              final mileage = int.tryParse(
+                mileageController.text.trim(),
+              );
+
+              if (driverName.isEmpty ||
+                  mileage == null ||
+                  mileage < 0) {
+                return;
+              }
+
+              Navigator.of(dialogContext).pop({
+                'driverName': driverName,
+                'startMileage': mileage,
+              });
+            },
+            child: const Text('Iniciar'),
+          ),
+        ],
       );
-    }
+    },
+  );
+
+  driverController.dispose();
+  mileageController.dispose();
+
+  if (result == null) return;
+
+  final driverName =
+      result['driverName'] as String;
+
+  final startMileage =
+      result['startMileage'] as int;
+
+  try {
+    await _routeRepository.startRoute(
+      routeId: _route.id,
+      startMileage: startMileage,
+      driverName: driverName,
+    );
+
+    if (!mounted) return;
+
+    final updatedRoute =
+        await _routeRepository.getById(_route.id);
+
+    if (!mounted) return;
+
+    setState(() {
+      _route = updatedRoute;
+      _loadData();
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Rota iniciada com sucesso.',
+        ),
+      ),
+    );
+  } catch (error) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Erro ao iniciar rota: $error',
+        ),
+      ),
+    );
   }
-  Future<String> _buildRouteSummary({
+}
+Future<String> _buildRouteSummary({
   required int endMileage,
 }) async {
   final stops = await _stopRepository.getByRoute(
-    widget.route.id,
+    _route.id,
   );
 
   final visits = await _visitRepository.getByRoute(
-    widget.route.id,
+    _route.id,
   );
 
   final visitByPersonId = {
@@ -300,7 +412,7 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
   final notFoundCount =
       visits.where((visit) => !visit.wasFound).length;
 
-  final startMileage = widget.route.startMileage;
+  final startMileage = _route.startMileage;
 
   final distance = startMileage == null
       ? null
@@ -309,44 +421,47 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
   final buffer = StringBuffer();
 
   buffer.writeln(
-    'ROTA SOLIDÁRIA — ${_formatDate(widget.route.routeDate)}',
+    'ROTA SOLIDÁRIA — ${_formatDate(_route.routeDate)}',
   );
-  buffer.writeln();
 
-  if (startMileage != null) {
+  if (_route.driverName != null &&
+      _route.driverName!.trim().isNotEmpty) {
     buffer.writeln(
-      'Quilometragem inicial: $startMileage km',
+      'Motorista: ${_route.driverName}',
     );
   }
 
-  buffer.writeln(
-    'Quilometragem final: $endMileage km',
-  );
-
   if (distance != null) {
     buffer.writeln(
-      'Total percorrido: $distance km',
+      'Distância percorrida: $distance km',
     );
   }
 
   buffer.writeln();
   buffer.writeln('Pessoas acompanhadas:');
 
-  for (final stop in stops) {
-    final visit =
-        visitByPersonId[stop.assistedPersonId];
+for (final stop in stops) {
+  final visit =
+      visitByPersonId[stop.assistedPersonId];
 
-    final status = visit == null
-        ? 'Sem registo'
-        : visit.wasFound
-            ? 'Encontrado'
-            : 'Não encontrado';
+  final status = visit == null
+      ? 'Sem registo'
+      : visit.wasFound
+          ? 'Encontrado'
+          : 'Não encontrado';
 
+  buffer.writeln(
+    '${stop.stopOrder}. '
+    '${stop.personName ?? 'Sem nome'} — $status',
+  );
+
+  if (visit?.observation != null &&
+      visit!.observation!.trim().isNotEmpty) {
     buffer.writeln(
-      '${stop.stopOrder}. '
-      '${stop.personName ?? 'Sem nome'} — $status',
+      '   Observações: ${visit.observation!.trim()}',
     );
   }
+}
 
   buffer.writeln();
   buffer.writeln('Resumo:');
@@ -360,6 +475,7 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
 
   return buffer.toString().trim();
 }
+
 Future<void> _completeRoute() async {
   final controller = TextEditingController();
 
@@ -370,17 +486,23 @@ Future<void> _completeRoute() async {
         title: const Text('Finalizar rota'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (widget.route.startMileage != null)
+             Text(
+              'Data da rota: ${_formatDate(_route.routeDate)}',
+             ),
+           const SizedBox(height: 16),
+            if (_route.startMileage != null)
               Padding(
                 padding: const EdgeInsets.only(
                   bottom: 16,
                 ),
                 child: Text(
                   'Quilometragem inicial: '
-                  '${widget.route.startMileage} km',
+                  '${_route.startMileage} km',
                 ),
               ),
+
             TextField(
               controller: controller,
               keyboardType: TextInputType.number,
@@ -425,21 +547,23 @@ Future<void> _completeRoute() async {
 
   try {
     await _routeRepository.completeRoute(
-      routeId: widget.route.id,
+      routeId: _route.id,
       endMileage: endMileage,
     );
 
     if (!mounted) return;
 
-    final startMileage =
-        widget.route.startMileage;
+    final startMileage = _route.startMileage;
 
     final distance = startMileage == null
         ? null
         : endMileage - startMileage;
-    final summary = await _buildRouteSummary(
-     endMileage: endMileage,
-        );
+      final summary = await RouteDetailScreen.buildRouteSummary(
+      route: _route,
+      endMileage: endMileage,
+      stopRepository: _stopRepository,
+      visitRepository: _visitRepository,
+    );
 
 if (!mounted) return;
 
@@ -510,6 +634,70 @@ if (!mounted) return;
     );
   }
 }
+Future<void> _removeStop(
+  RouteStop stop,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: const Text(
+          'Remover da rota',
+        ),
+        content: Text(
+          'Deseja remover '
+          '${stop.personName ?? 'esta pessoa'} '
+          'desta rota?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop(false);
+            },
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop(true);
+            },
+            child: const Text('Remover'),
+          ),
+        ],
+      );
+    },
+  );
+
+  if (confirmed != true) return;
+
+  try {
+    await _stopRepository.remove(
+      routeId: _route.id,
+      routeStopId: stop.id,
+    );
+
+    if (!mounted) return;
+
+    _reload();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Pessoa removida da rota.',
+        ),
+      ),
+    );
+  } catch (error) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Erro ao remover da rota: $error',
+        ),
+      ),
+    );
+  }
+}
   Future<void> _registerVisit(
     RouteStop stop,
   ) async {
@@ -525,18 +713,23 @@ if (!mounted) return;
       ),
     );
 
-    if (created == true && mounted) {
-      _reload();
+if (created == true && mounted) {
+_pendingScrollOffset = _scrollController.hasClients
+    ? _scrollController.offset
+    : 0.0;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Visita registada com sucesso.',
-          ),
-        ),
-      );
-    }
-  }
+_reload();
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text(
+        'Visita registada com sucesso.',
+      ),
+    ),
+  );
+}
+}
+
 Future<void> _openPersonProfile(
   RouteStop stop,
 ) async {
@@ -638,12 +831,10 @@ Future<void> _callPhone(
     );
   }
 }
-  String _formatDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}/'
-        '${date.month.toString().padLeft(2, '0')}/'
-        '${date.year}';
-  }
+  String _formatDate(DateTime date) =>
+      RouteDetailScreen.formatRouteDate(date);
 
+      
   @override
   Widget build(BuildContext context) {
     final isPlanned =
@@ -670,9 +861,15 @@ Future<void> _callPhone(
                 )
               : null,
 
-      body: Column(
-        children: [
-          if (isPlanned)
+     body: Column(
+  children: [
+    RouteInventoryPanel(
+      routeId: _route.id,
+      canEdit: isInProgress,
+    ),
+
+    if (isPlanned)
+    
             Padding(
               padding: const EdgeInsets.all(16),
               child: SizedBox(
@@ -766,6 +963,11 @@ if (isInProgress)
                         visitsSnapshot.data ??
                             <String>{};
 
+
+final visitedCount = visitedStopIds.length;
+final remainingCount =
+    stops.length - visitedCount;
+
                     Widget buildStopTile(
                       BuildContext context,
                       int index,
@@ -844,11 +1046,30 @@ if (isInProgress)
                         ),
 
                         trailing:
-                            isPlanned &&
-                                    _session.canManage
-                                ? const Icon(
-                                    Icons.drag_handle,
-                                  )
+    isPlanned &&
+            _session.canManage
+        ? Row(
+            mainAxisSize:
+                MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip:
+                    'Remover da rota',
+                icon: const Icon(
+                  Icons
+                      .remove_circle_outline,
+                ),
+                onPressed: () {
+                  _removeStop(
+                    stop,
+                  );
+                },
+              ),
+              const Icon(
+                Icons.drag_handle,
+              ),
+            ],
+          )
                                 : isInProgress
                                     ? Row(
                                         mainAxisSize:
@@ -932,26 +1153,23 @@ if (isInProgress)
                         onReorder:
                             (oldIndex,
                                 newIndex) async {
-                          if (newIndex > oldIndex) {
-                            newIndex -= 1;
-                          }
+                            final reorderedStops =
+                  List<RouteStop>.from(stops);
 
-                          final reorderedStops =
-                              List<RouteStop>.from(
-                            stops,
-                          );
+              // Ao mover uma paragem para baixo,
+              // o Flutter pode devolver um índice
+              // uma posição à frente.
+              if (newIndex > oldIndex) {
+                newIndex -= 1;
+              }
 
-                          final movedStop =
-                              reorderedStops
-                                  .removeAt(
-                            oldIndex,
-                          );
+              final movedStop =
+                  reorderedStops.removeAt(oldIndex);
 
-                          reorderedStops.insert(
-                            newIndex,
-                            movedStop,
-                          );
-
+              reorderedStops.insert(
+                newIndex,
+                movedStop,
+              );
                           setState(() {
                             _stopsFuture =
                                 Future.value(
@@ -994,10 +1212,66 @@ if (isInProgress)
                       );
                     }
 
-                    return ListView.builder(
-                      itemCount: stops.length,
-                      itemBuilder: buildStopTile,
-                    );
+                  return Column(
+  children: [
+    if (isInProgress)
+      Padding(
+        padding: const EdgeInsets.fromLTRB(
+          16,
+          8,
+          16,
+          12,
+        ),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Theme.of(context)
+                .colorScheme
+                .surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            'Progresso: $visitedCount de ${stops.length} visitados'
+            ' • $remainingCount restantes',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+Expanded(
+  child: Builder(
+    builder: (context) {
+      if (_pendingScrollOffset != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_scrollController.hasClients) return;
+
+          final savedOffset = _pendingScrollOffset;
+          if (savedOffset == null) return;
+
+          final maxOffset =
+              _scrollController.position.maxScrollExtent;
+
+          _scrollController.jumpTo(
+            savedOffset.clamp(0.0, maxOffset).toDouble(),
+          );
+
+          _pendingScrollOffset = null;
+        });
+      }
+
+      return ListView.builder(
+        controller: _scrollController,
+        itemCount: stops.length,
+        itemBuilder: buildStopTile,
+      );
+    },
+  ),
+),
+  ],
+);
                   },
                 );
               },
